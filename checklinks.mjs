@@ -1,7 +1,13 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const path = require('path');
+// const axios = require('axios');
+// const cheerio = require('cheerio');
+// const path = require('path');
 
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+import * as path from 'path';
+import crypto from 'crypto';
+
+const md5sum = crypto.createHash('md5');
 // const siteUrl = 'https://calleconomydrainclean.com'; // Replace with your URL
 
 async function collectSiteCities(baseUrl) {
@@ -32,9 +38,10 @@ async function collectSiteCities(baseUrl) {
     });
 }
 
-async function checkCityPage(baseUrl) {
-  //   console.log('Check City Page', baseUrl);
-  await axios
+async function checkCityPage(baseUrl, job) {
+  console.log('Check City Page', baseUrl);
+  const result = { url: baseUrl, redirects: [] };
+  return await axios
     .get(baseUrl)
     .then(async (response) => {
       const html = response.data;
@@ -51,14 +58,14 @@ async function checkCityPage(baseUrl) {
               u.pathname = url; //path.join(u.pathname, url);
             } else {
               u.pathname = path.join(u.pathname, url);
-              console.log('found relative path', url);
+              // console.log('found relative path', url);
             }
             url = u.href;
           }
           return url;
         })
         .get();
-
+      // console.log({ urls });
       /* START: method fast */
       //   const results = await Promise.all(urls.map(isRedirected));
       //   const errs = results.filter((r, i) => r.redirected);
@@ -71,25 +78,33 @@ async function checkCityPage(baseUrl) {
       /* END: method fast */
 
       /* START: method slow */
-      const found = [];
+      // const found = [];
       let i = urls.length;
       while (i--) {
         // console.log('test', urls[i]);
-        const isRe = await isRedirected(urls[i]);
-        if (isRe.redirected) {
-          found.push(isRe);
-          // console.log(i,isRe);
-        }
+        // const isRe = await isRedirected(urls[i]);
+        result.redirects.push(await isRedirected(urls[i]));
+
+        if (shouldStop(job)) break;
+        // if (isRe.redirected) {
+        // found.push(isRe);
+        // console.log(i,isRe);
+        // }
       }
-      if (found.length) {
-        console.table(found, ['from', 'to']);
-      } else {
-        console.log(baseUrl, '--> No errors found.');
-      }
+      // if (found.length) {
+      //   console.table(found, ['from', 'to']);
+      // } else {
+      //   // console.log(baseUrl, '--> No errors found.');
+      // }
       /* END: method slow */
+
+      // console.log({ result });
+      return result;
     })
     .catch((error) => {
       console.error('Error fetching the URL:', error);
+      (result.error = 'Error fetching the URL:'), error;
+      return result;
     });
 }
 
@@ -130,21 +145,88 @@ async function isRedirected(url) {
   }
 }
 
-async function runJob(siteUrl) {
-  //   console.log('Scanning', siteUrl);
-  const cities = await collectSiteCities(siteUrl);
-  console.log(`Found ${cities.length} cities.`);
-  await checkCityPage(siteUrl);
-  try {
-    let i = cities.length;
-    // await Promise.all(cities.map((c) => checkCityPage(c)));
-    while (i--) {
-      //   console.log(i, ':', 'Check City Page', cities[i]);
-      await checkCityPage(cities[i]);
-    }
-  } catch (err) {}
-  console.log('done');
+const jobs = {};
+
+export function createJob(args) {
+  const jobId = crypto.createHash('sha256').update(JSON.stringify(args)).digest('hex');
+  if (!hasJob(jobId)) {
+    jobs[jobId] = {
+      created: new Date().toISOString(), //
+      args,
+      status: 'idle',
+      id: jobId,
+      result: {},
+      stop: false
+    };
+  }
+  return getJob(jobId);
 }
 
-// isRedirected('https://alwaysplumbing.kinsta.cloud/about-us/').then(r => console.log(r));
-runJob(process.argv[2]);
+export function hasJob(jobId) {
+  return jobs.hasOwnProperty(jobId);
+}
+
+export function getJob(jobId) {
+  if (hasJob(jobId)) {
+    return jobs[jobId];
+  }
+  return { error: 'Job not found' };
+}
+
+export function stopJob(jobId) {
+  const job = getJob(jobId);
+  if (job) job.stop = true;
+  return job;
+}
+
+function startJob(jobId) {
+  const job = getJob(jobId);
+  if (job.status === 'idle') {
+    job.started = new Date().toISOString();
+    job.stop = false;
+    job.status = 'running';
+    return true;
+  }
+  return false;
+}
+
+function endJob(jobId) {
+  const job = getJob(jobId);
+  job.stop = false;
+  job.status = 'idle';
+}
+
+function shouldStop(job) {
+  if (job.stop === true) {
+    job.status = 'idle';
+    return true;
+  }
+  return false;
+}
+
+export async function runJob(jobId) {
+  console.log('runJob', jobId);
+  if (!startJob(jobId)) return;
+  const job = getJob(jobId);
+  const siteUrl = job.args.siteUrl;
+
+  job.result.test = {};
+  const cities = await collectSiteCities(siteUrl);
+  cities.push(siteUrl);
+  cities.sort().reverse();
+  job.result.test = cities.reduce((o, c) => ({ ...o, [c]: { status: 'idle', result: null } }), {});
+
+  if (shouldStop(job)) return job;
+
+  let i = cities.length;
+  while (i--) {
+    job.result.test[cities[i]] = { status: 'running', result: null };
+    const cityResult = await checkCityPage(cities[i], job);
+    job.result.test[cities[i]].result = cityResult;
+    job.result.test[cities[i]].status = 'done';
+
+    if (shouldStop(job)) break;
+  }
+
+  endJob(jobId);
+}
