@@ -41,7 +41,7 @@ function stopPoll() {
 const $result = document.getElementById('result');
 
 function displayResult(r) {
-  console.log({ r });
+  console.log('displayResult', { r });
   if (r?.error) {
     $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
     stopPoll();
