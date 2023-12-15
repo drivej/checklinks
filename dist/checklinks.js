@@ -23,11 +23,28 @@ function startPolling() {
   pollInt = setInterval(doPoll, 2000);
 }
 
+function doPoll() {
+  fetch(`/job/${job.id}`)
+    .then((r) => r.json())
+    .then((r) => {
+      localStorage.setItem('jobData', JSON.stringify(r));
+      $jobData.innerText = JSON.stringify(r, null, 2);
+      displayResult(r);
+      if (r.status === 'idle') stopPoll();
+    });
+}
+
+function stopPoll() {
+  if (pollInt) clearInterval(pollInt);
+}
+
 const $result = document.getElementById('result');
 
 function displayResult(r) {
+  console.log({ r });
   if (r?.error) {
     $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
+    stopPoll();
     return;
   }
   const cities = Object.keys(r.result?.test ?? {})
@@ -93,21 +110,6 @@ function showErrors(city) {
 
 const $jobData = document.getElementById('job-data');
 
-function doPoll() {
-  fetch(`/job/${job.id}`)
-    .then((r) => r.json())
-    .then((r) => {
-      localStorage.setItem('jobData', JSON.stringify(r));
-      $jobData.innerText = JSON.stringify(r, null, 2);
-      displayResult(r);
-      if (r.status === 'idle') stopPoll();
-    });
-}
-
-function stopPoll() {
-  if (pollInt) clearInterval(pollInt);
-}
-
 const $form = document.getElementById('checkform');
 $form.addEventListener('submit', onSubmit);
 
@@ -128,6 +130,6 @@ const jobData = localStorage.getItem('jobData');
 if (jobData) {
   job = JSON.parse(jobData);
   console.log({ job });
-  displayResult(job.id);
   startPolling();
+  displayResult(job);
 }
