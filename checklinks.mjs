@@ -5,7 +5,177 @@ import crypto from 'crypto';
 
 const jobs = {};
 
+function isDomain(url) {
+  return /^http/.test(url);
+}
+
+function isTel(url) {
+  return /^tel:/.test(url);
+}
+
+function isVcf(url) {
+  return /.vcf$/.test(url);
+}
+
+function isAnchor(url) {
+  return /^#/.test(url);
+}
+
+function isAllowed(url) {
+  return !isTel(url) && !isVcf(url) && !isAnchor(url);
+}
+
+// const scrapeCache = {};
+
+async function scrapeLocalLinks(baseUrl) {
+  const parent = new URL(baseUrl);
+
+  // if (scrapeCache[parent.hostname]) {
+  //   return scrapeCache[parent.hostname];
+  // }
+  // scrapeCache[parent.hostname] = [];
+
+  try {
+    const response = await axios.get(baseUrl);
+    const $ = cheerio.load(response.data);
+
+    // Extract all anchor tags (links)
+    let links = [];
+    $('a[href]').each((index, element) => {
+      const href = $(element).attr('href');
+      links.push(href);
+    });
+    console.log('test 1');
+
+    // filter and normalize to absolute urls
+    links = links
+      .filter(isAllowed)
+      .map((url) => {
+        try {
+          let child;
+          if (isDomain(url)) {
+            child = new URL(url);
+          } else {
+            child = new URL(baseUrl);
+            child.pathname = path.isAbsolute(url) ? url : path.join(child.pathname, url);
+          }
+          return child;
+        } catch (err) {
+          console.log('err in map');
+          return url;
+        }
+      })
+      .filter((child) => child.hostname === parent.hostname)
+      .map((child) => child.href)
+      .sort();
+
+    console.log('test 2');
+    links = [...new Set(links)];
+    console.log('test 3');
+    // scrapeCache[parent.hostname] = links;
+
+    return links;
+  } catch (err) {
+    console.error('Error scraping links:', baseUrl);
+    // return [];
+    throw new Error('Error scraping links on ' + baseUrl);
+  }
+}
+
+// scrapeLocalLinks('https://semperfiphoenix.com/bapchule/').then((r) => {
+//   console.log(r);
+// });
+// async function checkRedirects(urls) {
+//   const result = [];
+//   let i = urls.length;
+//   while (i--) {
+//     result.push(await isRedirected(urls[i]));
+//   }
+//   return result;
+// }
+
+// async function scrapeSite(siteUrl, job) {
+//   const cache = {};
+//   job.result = {};
+//   job.result[siteUrl] = {status:'running', url:siteUrl, links:[]};
+//   const homeResult = await scrapePage(siteUrl);
+//   result[siteUrl].links = homeResult.links;
+//   result.push(homeResult);
+//   job.result = result;
+//   let i = homeResult.links.length;
+//   while (i--) {
+//     const link = homeResult.links[i];
+//     if (!link.redirected) {
+//       if (!cache.hasOwnProperty(link.from)) {
+//         cache[link.from] = true;
+//         result.push(await scrapePage(link.from));
+//         job.result = result;
+//       } else {
+//         // console.log('skipped');
+//       }
+//       // console.log({ from: link.from });
+//     }
+//   }
+//   return result;
+// }
+
+async function scrapePage(pageUrl, job, maxDepth = 0, depth = 0) {
+  console.log('scrapePage', pageUrl, depth);
+  if (job.result.hasOwnProperty(pageUrl)) return;
+  job.result[pageUrl] = { links: {} };
+  const urls = await scrapeLocalLinks(pageUrl);
+  urls.forEach((url) => (job.result[pageUrl].links[url] = { status: 'idle' }));
+  console.log({ urls });
+  let i = urls.length;
+  while (i--) {
+    try {
+      const test = await isRedirected(urls[i]);
+      // if (test.redirected) {
+      job.result[pageUrl].links[urls[i]] = test;
+      // console.log(urls[i], '=>', job.result[pageUrl].links[urls[i]].redirected);
+      // }
+      if (depth === 0) {
+        scrapePage(urls[i], job, maxDepth, depth + 1);
+      }
+    } catch (err) {
+      console.log('failed', urls[i]);
+    }
+  }
+}
+
+async function scrapeSite(siteUrl, job) {
+  job.status = 'running';
+  await scrapePage(siteUrl, job);
+  job.status = 'idle';
+}
+
+// async function XscrapePage(url) {
+//   try {
+//     const urls = await scrapeLocalLinks(url);
+//     const links = await checkRedirects(urls);
+//     return { url, links };
+//   } catch (err) {
+//     return { error: err };
+//   }
+// }
+export async function runTest(testUrl) {
+  // const testUrl = 'https://slapshotsairconditioning.com/'; // 'https://alwaysplumbing.kinsta.cloud';
+  const myJob = createJob({ testUrl });
+  return scrapeSite(testUrl, myJob).then(() => {
+    console.log('done');
+    // console.log(JSON.stringify(myJob, null, 2));
+    return myJob;
+  });
+}
+
+// setInterval(() => {
+//   console.log(myJob);
+// }, 2000);
+
 async function collectSiteCities(baseUrl) {
+  const u = new URL(baseUrl);
+  console.log(u.host, u.hostname);
+
   return axios
     .get(baseUrl)
     .then(async (response) => {
@@ -14,6 +184,7 @@ async function collectSiteCities(baseUrl) {
       return $('.maplinkswrapper a[href]')
         .map((index, element) => {
           let url = $(element).attr('href');
+          console.log('isAbsolute', path.isAbsolute(url), url);
           if (path.isAbsolute(url)) {
             const u = new URL(baseUrl);
             u.pathname = path.join(u.pathname, url);

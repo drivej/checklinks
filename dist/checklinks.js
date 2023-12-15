@@ -2,11 +2,14 @@ let job = null;
 
 const blinker = `<div class="spinner-grow spinner-grow-sm text-success" role="status"><span class="visually-hidden">Loading...</span></div>`;
 
-function onSubmit(e) {
-  e.preventDefault();
-  localStorage.setItem('siteUrl', e.target.siteUrl.value);
+// function onSubmit(e) {
+//   e.preventDefault();
+//   scanUrl(e.target.siteUrl.value);
+// }
 
-  fetch(`/checklinks?siteUrl=${encodeURIComponent(e.target.siteUrl.value)}`)
+function scanUrl(url) {
+  localStorage.setItem('siteUrl', url);
+  fetch(`/checklinks?siteUrl=${encodeURIComponent(url)}`)
     .then((r) => r.json())
     .then((r) => {
       job = r;
@@ -41,7 +44,6 @@ function stopPoll() {
 const $result = document.getElementById('result');
 
 function displayResult(r) {
-  console.log('displayResult', { r });
   if (r?.error) {
     $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
     stopPoll();
@@ -111,7 +113,7 @@ function showErrors(city) {
 const $jobData = document.getElementById('job-data');
 
 const $form = document.getElementById('checkform');
-$form.addEventListener('submit', onSubmit);
+// $form.addEventListener('submit', onSubmit);
 
 function stopJob() {
   fetch(`/job/${job.id}/stop`)
@@ -124,12 +126,23 @@ function stopJob() {
 const $stopBtn = document.getElementById('stop-btn');
 $stopBtn.addEventListener('click', stopJob);
 
-document.querySelector('input[name="siteUrl"]').value = localStorage.getItem('siteUrl');
-
-const jobData = localStorage.getItem('jobData');
-if (jobData) {
-  job = JSON.parse(jobData);
-  console.log({ job });
-  startPolling();
-  displayResult(job);
+function init() {
+  const params = new URLSearchParams(window.location.search);
+  let url = '';
+  if (params.has('siteUrl')) {
+    url = params.get('siteUrl');
+    document.querySelector('input[name="siteUrl"]').value = params.get('siteUrl');
+    //   } else {
+    //     url = localStorage.getItem('siteUrl');
+    // document.querySelector('input[name="siteUrl"]').value = url;
+    // const jobData = localStorage.getItem('jobData');
+    // if (jobData) {
+    //   job = JSON.parse(jobData);
+    //   startPolling();
+    //   displayResult(job);
+    // }
+  }
+  scanUrl(url);
 }
+
+init();
