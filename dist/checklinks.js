@@ -26,6 +26,10 @@ function startPolling() {
 const $result = document.getElementById('result');
 
 function displayResult(r) {
+  if (r?.error) {
+    $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
+    return;
+  }
   const cities = Object.keys(r.result?.test ?? {})
     .map((url) => ({ url, ...r.result.test[url] }))
     .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
