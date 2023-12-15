@@ -76,9 +76,9 @@ async function scrapeLocalLinks(baseUrl) {
 
     return links;
   } catch (err) {
-    console.error('Error scraping links:', baseUrl);
+    // console.error('scrapeLocalLinks: ', baseUrl);
+    throw new Error('scrapeLocalLinks: ' + baseUrl);
     // return [];
-    throw new Error('Error scraping links on ' + baseUrl);
   }
 }
 
@@ -173,6 +173,7 @@ export async function runTest(testUrl) {
 // }, 2000);
 
 async function collectSiteCities(baseUrl) {
+  console.log('collectSiteCities', { baseUrl });
   const u = new URL(baseUrl);
   console.log(u.host, u.hostname);
 
@@ -184,7 +185,7 @@ async function collectSiteCities(baseUrl) {
       return $('.maplinkswrapper a[href]')
         .map((index, element) => {
           let url = $(element).attr('href');
-          console.log('isAbsolute', path.isAbsolute(url), url);
+          // console.log('isAbsolute', path.isAbsolute(url), url);
           if (path.isAbsolute(url)) {
             const u = new URL(baseUrl);
             u.pathname = path.join(u.pathname, url);
@@ -318,9 +319,29 @@ function startJob(jobId) {
 
 function endJob(jobId) {
   const job = getJob(jobId);
+  job.completed = new Date().toISOString();
   job.stop = false;
-  job.status = 'idle';
+  job.status = 'done';
 }
+
+export function deleteJob(jobId) {
+  if (hasJob(jobId)) {
+    delete jobs[jobId];
+  }
+}
+
+export function resetJob(jobId) {
+  const job = getJob(jobId);
+  if (job) {
+    job.started = null;
+    job.completed = null;
+    job.result = {};
+    job.status = 'idle';
+  }
+  return job;
+}
+
+resetJob;
 
 function shouldStop(job) {
   if (job.stop === true) {
@@ -339,6 +360,7 @@ export async function runJob(jobId) {
   job.result.test = {};
   const cities = await collectSiteCities(siteUrl);
   cities.push(siteUrl);
+  cities.splice(2); // FOR TESTING
   cities.sort().reverse();
   job.result.test = cities.reduce((o, c) => ({ ...o, [c]: { status: 'idle', result: null } }), {});
 

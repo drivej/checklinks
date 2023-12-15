@@ -2,22 +2,48 @@ let job = null;
 
 const blinker = `<div class="spinner-grow spinner-grow-sm text-success" role="status"><span class="visually-hidden">Loading...</span></div>`;
 
+const $form = document.getElementById('checkform');
+const $stopBtn = document.getElementById('stop-btn');
+const $startBtn = document.getElementById('start-btn');
+const $resetBtn = document.getElementById('reset-btn');
+
 // function onSubmit(e) {
 //   e.preventDefault();
 //   scanUrl(e.target.siteUrl.value);
 // }
 
-function scanUrl(url) {
+function startJob(url) {
   localStorage.setItem('siteUrl', url);
   fetch(`/checklinks?siteUrl=${encodeURIComponent(url)}`)
     .then((r) => r.json())
     .then((r) => {
       job = r;
       displayResult(r);
-      $jobData.innerText = JSON.stringify(r, null, 2);
       startPolling();
     });
 }
+
+function stopJob() {
+  fetch(`/job/${job.id}/stop`)
+    .then((r) => r.json())
+    .then((r) => {
+      displayResult(r);
+    });
+}
+
+$stopBtn.addEventListener('click', stopJob);
+
+function restartJob() {
+  fetch(`/job/${job.id}/restart`)
+    .then((r) => r.json())
+    .then((r) => {
+      job = r;
+      displayResult(r);
+      startPolling();
+    });
+}
+
+$resetBtn.addEventListener('click', restartJob);
 
 let pollInt;
 
@@ -31,7 +57,6 @@ function doPoll() {
     .then((r) => r.json())
     .then((r) => {
       localStorage.setItem('jobData', JSON.stringify(r));
-      $jobData.innerText = JSON.stringify(r, null, 2);
       displayResult(r);
       if (r.status === 'idle') stopPoll();
     });
@@ -49,6 +74,21 @@ function displayResult(r) {
     stopPoll();
     return;
   }
+  $startBtn.disabled = true;
+  $resetBtn.disabled = true;
+  $stopBtn.disabled = true;
+
+  switch (r.status) {
+    case 'done':
+      $resetBtn.disabled = false;
+      break;
+    case 'running':
+      $stopBtn.disabled = false;
+      break;
+    default:
+      $startBtn.disabled = false;
+  }
+
   const cities = Object.keys(r.result?.test ?? {})
     .map((url) => ({ url, ...r.result.test[url] }))
     .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -66,8 +106,9 @@ function displayResult(r) {
 
   let elapsed = '0:00';
   if (r.started) {
+    const endDate = r.status === 'done' ? new Date(Date.parse(r?.completed ?? Date.now())) : new Date();
     const startDate = new Date(Date.parse(r.started));
-    const dif = Date.now() - startDate.getTime();
+    const dif = endDate.getTime() - startDate.getTime();
     const s = dif / 1000;
     const ss = ~~(s % 60);
     const mm = ~~(s / 60);
@@ -110,22 +151,6 @@ function showErrors(city) {
   return '';
 }
 
-const $jobData = document.getElementById('job-data');
-
-const $form = document.getElementById('checkform');
-// $form.addEventListener('submit', onSubmit);
-
-function stopJob() {
-  fetch(`/job/${job.id}/stop`)
-    .then((r) => r.json())
-    .then((r) => {
-      $jobData.innerText = JSON.stringify(r, null, 2);
-    });
-}
-
-const $stopBtn = document.getElementById('stop-btn');
-$stopBtn.addEventListener('click', stopJob);
-
 function init() {
   const params = new URLSearchParams(window.location.search);
   let url = '';
@@ -142,7 +167,8 @@ function init() {
     //   displayResult(job);
     // }
   }
-  scanUrl(url);
+  startJob(url);
+  // $form.addEventListener('submit', onSubmit);
 }
 
 init();
