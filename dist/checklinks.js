@@ -3,14 +3,25 @@ let job = null;
 const blinker = `<div class="spinner-grow spinner-grow-sm text-success" role="status"><span class="visually-hidden">Loading...</span></div>`;
 
 const $form = document.getElementById('checkform');
-const $stopBtn = document.getElementById('stop-btn');
 const $startBtn = document.getElementById('start-btn');
+const $stopBtn = document.getElementById('stop-btn');
 const $resetBtn = document.getElementById('reset-btn');
-
+const $urlInput = document.querySelector('input[name="siteUrl"]');
 // function onSubmit(e) {
 //   e.preventDefault();
 //   scanUrl(e.target.siteUrl.value);
 // }
+
+$urlInput.addEventListener('input', () => {
+  if ($urlInput.value !== job?.args?.siteUrl) {
+    stopPoll();
+    $startBtn.disabled = false;
+    $resetBtn.disabled = true;
+    $stopBtn.disabled = true;
+  } else {
+    startPolling();
+  }
+});
 
 function startJob(url) {
   localStorage.setItem('siteUrl', url);
@@ -89,6 +100,8 @@ function displayResult(r) {
       $startBtn.disabled = false;
   }
 
+  $urlInput.placeholder = r.args.siteUrl;
+
   const cities = Object.keys(r.result?.test ?? {})
     .map((url) => ({ url, ...r.result.test[url] }))
     .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -156,7 +169,7 @@ function init() {
   let url = '';
   if (params.has('siteUrl')) {
     url = params.get('siteUrl');
-    document.querySelector('input[name="siteUrl"]').value = params.get('siteUrl');
+    $urlInput.value = params.get('siteUrl');
     //   } else {
     //     url = localStorage.getItem('siteUrl');
     // document.querySelector('input[name="siteUrl"]').value = url;
