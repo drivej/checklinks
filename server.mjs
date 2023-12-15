@@ -1,6 +1,6 @@
 import express from 'express';
 import path from 'path';
-// import { runJob, createJob, getJob, stopJob } from './checklinks.mjs';
+import { runJob, createJob, getJob, stopJob } from './checklinks.mjs';
 
 const app = express();
 const PORT = process.env.PORT || 3010;
