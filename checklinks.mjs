@@ -360,7 +360,7 @@ export async function runJob(jobId) {
   job.result.test = {};
   const cities = await collectSiteCities(siteUrl);
   cities.push(siteUrl);
-  cities.splice(2); // FOR TESTING
+  // cities.splice(2); // FOR TESTING
   cities.sort().reverse();
   job.result.test = cities.reduce((o, c) => ({ ...o, [c]: { status: 'idle', result: null } }), {});
 
