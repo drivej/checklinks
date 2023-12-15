@@ -5,7 +5,8 @@
   "main": "server.js",
   "type":"commonjs",
   "scripts": {
-    "start": "node server.js"
+    "Xstart": "node server.js",
+    "start": "node --experimental-modules server.mjs"
   },
   "author": "",
   "license": "ISC",
