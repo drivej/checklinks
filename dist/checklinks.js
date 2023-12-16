@@ -6,14 +6,14 @@ const $form = document.getElementById('checkform');
 const $startBtn = document.getElementById('start-btn');
 const $stopBtn = document.getElementById('stop-btn');
 const $resetBtn = document.getElementById('reset-btn');
-const $urlInput = document.querySelector('input[name="siteUrl"]');
+const $urlInput = document.querySelector('input[name="url"]');
 // function onSubmit(e) {
 //   e.preventDefault();
 //   scanUrl(e.target.siteUrl.value);
 // }
 
 $urlInput.addEventListener('input', () => {
-  if ($urlInput.value !== job?.args?.siteUrl) {
+  if ($urlInput.value !== job?.args?.url) {
     stopPoll();
     $startBtn.disabled = false;
     $resetBtn.disabled = true;
@@ -24,8 +24,8 @@ $urlInput.addEventListener('input', () => {
 });
 
 function startJob(url) {
-  localStorage.setItem('siteUrl', url);
-  fetch(`/checklinks?siteUrl=${encodeURIComponent(url)}`)
+  localStorage.setItem('url', url);
+  fetch(`/checklinks?url=${encodeURIComponent(url)}`)
     .then((r) => r.json())
     .then((r) => {
       job = r;
@@ -44,8 +44,8 @@ function stopJob() {
 
 $stopBtn.addEventListener('click', stopJob);
 
-function restartJob() {
-  fetch(`/job/${job.id}/restart`)
+function resetJob() {
+  fetch(`/job/${job.id}/reset`)
     .then((r) => r.json())
     .then((r) => {
       job = r;
@@ -54,7 +54,7 @@ function restartJob() {
     });
 }
 
-$resetBtn.addEventListener('click', restartJob);
+$resetBtn.addEventListener('click', resetJob);
 
 let pollInt;
 
@@ -79,7 +79,7 @@ function stopPoll() {
 
 const $result = document.getElementById('result');
 
-function displayResult(r) {
+function XdisplayResult(r) {
   if (r?.error) {
     $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
     stopPoll();
@@ -100,7 +100,7 @@ function displayResult(r) {
       $startBtn.disabled = false;
   }
 
-  $urlInput.placeholder = r.args.siteUrl;
+  $urlInput.placeholder = r.args.url;
 
   const cities = Object.keys(r.result?.test ?? {})
     .map((url) => ({ url, ...r.result.test[url] }))
@@ -137,6 +137,83 @@ function displayResult(r) {
   </table>`;
 }
 
+function anchorize(str) {
+  return str.replace(/[^a-zA-Z0-9]/g, '');
+}
+
+function displayResult(data) {
+  if (data?.error) {
+    $result.innerHTML = `<div class="alert alert-warning" role="alert">${data?.error}</div>`;
+    stopPoll();
+    return;
+  }
+  $startBtn.disabled = true;
+  $resetBtn.disabled = true;
+  $stopBtn.disabled = true;
+
+  switch (data.status) {
+    case 'done':
+      $resetBtn.disabled = false;
+      break;
+    case 'running':
+      $stopBtn.disabled = false;
+      break;
+    default:
+      $startBtn.disabled = false;
+  }
+
+  $urlInput.placeholder = data.args.url;
+
+  if (data?.result?.pages) {
+    const htm = [];
+
+    // Object.keys(data.result.pages)
+    //   .sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0))
+    //   .forEach((u) => {
+    //     htm.push(`<div><a href="#${anchorize(u)}">${u}</a></div>`);
+    //   });
+
+    //     const cls = r?.status === 'idle' ? 'text-bg-success' : 'text-bg-warning';
+
+    //   $result.innerHTML = `
+    //   <div class="p-1">Status: <span class="badge ${cls}">${r?.status ?? 'loading...'}</span> | Time Elapsed: ${elapsed}</div>
+    //   <table border="1" class="table table-sm table-bordered table-condensed">
+    //     <tbody>${htm.join('')}</tbody>
+    //   </table>`;
+
+    const q = Object.keys(data.result.links);
+    const a = q.filter((s) => data.result.links[s].status);
+    const p = (100 * a.length) / q.length;
+
+    htm.push(`<div>${data.status} ${~~p}%</div>`);
+
+    htm.push('<ul>');
+    Object.keys(data.result.pages)
+      .sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0))
+      .forEach((u) => {
+        htm.push(`<li>`);
+        const links = Object.keys(data.result.pages[u].links);
+        const done = links.filter((s) => data.result.links[s].status);
+
+        htm.push(`<a id="${anchorize(u)}">${u}</a> ${links.length}/${done.length}`);
+
+        htm.push(`<ul>`);
+        Object.keys(data.result.pages[u].links).forEach((s) => {
+          if (data.result.links[s]?.redirected === true) {
+            htm.push(`<li><a href="${s}">${s}</a> => <a href="${data.result.links[s].to}">${data.result.links[s].to}</a></li>`);
+          }
+        });
+        htm.push(`</ul>`);
+        htm.push(`</li>`);
+      });
+    htm.push('</ul>');
+
+    $result.innerHTML = htm.join('');
+  } else {
+    $result.innerHTML = '';
+  }
+}
+
 function showErrors(city) {
   const errs = city?.result?.redirects?.filter((r) => r.redirected === true) ?? [];
   if (errs.length > 0) {
@@ -167,9 +244,9 @@ function showErrors(city) {
 function init() {
   const params = new URLSearchParams(window.location.search);
   let url = '';
-  if (params.has('siteUrl')) {
-    url = params.get('siteUrl');
-    $urlInput.value = params.get('siteUrl');
+  if (params.has('url')) {
+    url = params.get('url');
+    $urlInput.value = params.get('url');
     //   } else {
     //     url = localStorage.getItem('siteUrl');
     // document.querySelector('input[name="siteUrl"]').value = url;
