@@ -114,11 +114,12 @@ function displayResult(data) {
   $resetBtn.disabled = true;
   $stopBtn.disabled = true;
   $refreshBtn.disabled = true;
+  const redirects = data?.result?.links ? Object.keys(data.result.links).filter((s) => data.result.links[s].redirected === true) : [];
 
   switch (data.status) {
     case 'done':
       $resetBtn.disabled = false;
-      $refreshBtn.disabled = false;
+      if (redirects.length > 0) $refreshBtn.disabled = false;
       break;
     case 'running':
       $stopBtn.disabled = false;
@@ -133,7 +134,6 @@ function displayResult(data) {
 
   const time = getElapsedTime(data);
   const progress = getJobProgress(data);
-  const redirects = data?.result?.links ? Object.keys(data.result.links).filter((s) => data.result.links[s].redirected === true) : [];
   const pages = Object.keys(data?.result?.pages ?? {}).length;
   const links = Object.keys(data?.result?.links ?? {}).length;
 
