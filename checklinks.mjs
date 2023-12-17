@@ -38,8 +38,6 @@ function isValidURL(urlString) {
   }
 }
 
-// const scrapeCache = {};
-
 async function getPageHTML(url) {
   return await axios.get(url).catch((err) => {
     if (err.response) {
@@ -53,7 +51,7 @@ async function getPageHTML(url) {
 }
 
 async function scrapeLocalLinks(baseUrl) {
-  const log = baseUrl.indexOf('brea') > 0;
+  const log = false; //baseUrl.indexOf('brea') > 0;
 
   if (!isValidURL(baseUrl)) {
     if (log) console.log('scrapeLocalLinks', 'invalid url', baseUrl);
@@ -63,10 +61,6 @@ async function scrapeLocalLinks(baseUrl) {
 
   const parent = new URL(baseUrl);
 
-  // if (scrapeCache[parent.hostname]) {
-  //   return scrapeCache[parent.hostname];
-  // }
-  // scrapeCache[parent.hostname] = [];
   let response;
   response = await getPageHTML(baseUrl);
 
@@ -96,7 +90,6 @@ async function scrapeLocalLinks(baseUrl) {
     const href = $(element).attr('href');
     links.push(href);
   });
-  // console.log('test 1');
 
   // filter and normalize to absolute urls
   links = links
@@ -115,243 +108,39 @@ async function scrapeLocalLinks(baseUrl) {
     .map((child) => child.href)
     .sort();
 
-  // console.log('test 2');
   links = [...new Set(links)];
-
   if (log) console.log(links);
-
-  // console.log('test 3');
-  // scrapeCache[parent.hostname] = links;
-
   return links;
-  // } catch (err) {
-  //   // console.error('scrapeLocalLinks: ', baseUrl);
-  //   throw new Error('scrapeLocalLinks: ' + baseUrl);
-  //   // return [];
-  // }
 }
 
-// async function xxxx() {
-//   const urls = await scrapeLocalLinks('https://alwaysplumbingcompany.com/brea/');
-//   console.log(urls);
-//   let i = urls.length;
-//   while (i--) {
-//     try {
-//       // await sleep(100);
-//       const test = await isRedirected(urls[i]);
-//       // if (test.redirected) {
-//       // job.result[pageUrl].links[urls[i]] = test;
-//       console.log(urls[i], '=>', test.redirected);
-//       // }
-//       // if (depth < maxDepth) {
-//       //   await sleep(100);
-//       //   scrapePage(urls[i], job, maxDepth, depth + 1);
-//       // }
-//     } catch (err) {
-//       console.log('failed', urls[i]);
-//     }
-//   }
-// }
-
-// xxxx();
-
-// async function checkRedirects(urls) {
-//   const result = [];
-//   let i = urls.length;
-//   while (i--) {
-//     result.push(await isRedirected(urls[i]));
-//   }
-//   return result;
-// }
-
-// async function scrapeSite(siteUrl, job) {
-//   const cache = {};
-//   job.result = {};
-//   job.result[siteUrl] = {status:'running', url:siteUrl, links:[]};
-//   const homeResult = await scrapePage(siteUrl);
-//   result[siteUrl].links = homeResult.links;
-//   result.push(homeResult);
-//   job.result = result;
-//   let i = homeResult.links.length;
-//   while (i--) {
-//     const link = homeResult.links[i];
-//     if (!link.redirected) {
-//       if (!cache.hasOwnProperty(link.from)) {
-//         cache[link.from] = true;
-//         result.push(await scrapePage(link.from));
-//         job.result = result;
-//       } else {
-//         // console.log('skipped');
-//       }
-//       // console.log({ from: link.from });
-//     }
-//   }
-//   return result;
-// }
-
-async function scrapePage(pageUrl, job, maxDepth = 0, depth = 0) {
-  if (!isValidURL(pageUrl)) {
-    console.log('scrapePage()', 'invalid url', pageUrl);
-    return;
-  }
-  // console.log('scrapePage', pageUrl, depth);
-  if (job.result.pages.hasOwnProperty(pageUrl)) return;
-  job.result.pages[pageUrl] = { links: {} };
+async function scrapePage(pageUrl, job) {
   const urls = await scrapeLocalLinks(pageUrl);
-  urls.unshift(pageUrl);
-  urls.forEach((url) => (job.result.pages[pageUrl].links[url] = url));
-  // console.log({ urls });
-  let i = urls.length;
-  while (i--) {
-    await sleep(100);
-    // if (job.result.links.hasOwnProperty(urls[i])) continue;
-
-    try {
-      if (urls[i].indexOf('brea/back') > 0) {
-        console.log(urls[i]);
-      }
-      const test = await isRedirected(urls[i]);
-      if (urls[i].indexOf('brea/back') > 0) {
-        console.log(test);
-      }
-
-      job.result.links[urls[i]] = test;
-      // if (test.redirected) {
-      // job.result.pages[pageUrl].links[urls[i]] = test;
-      // console.log(urls[i], '=>', job.result[pageUrl].links[urls[i]].redirected);
-      // }
-      if (depth < maxDepth) {
-        await sleep(100);
-        scrapePage(urls[i], job, maxDepth, depth + 1);
-      }
-    } catch (err) {
-      console.log('failed', urls[i]);
-    }
-  }
+  job.result.pages[pageUrl] = { links: {} };
+  urls.forEach((url) => {
+    job.result.pages[pageUrl].links[url] = url;
+    job.result.links[url] = { redirected: null };
+  });
+  return urls;
 }
 
 async function scrapeSite(siteUrl, job) {
-  // console.log('scrapeSite()', siteUrl);
-  // job.status = 'running';
   job.result = { pages: {}, links: {} };
-
-  const urls = await scrapeLocalLinks(siteUrl);
-  job.result.pages[siteUrl] = { links: {} };
-  urls.forEach((url) => {
-    job.result.pages[siteUrl].links[url] = url;
-    job.result.links[url] = { redirected: null };
-  });
+  const urls = await scrapePage(siteUrl, job);
 
   let i = urls.length;
   while (i--) {
     if (shouldStop(job)) break;
     const pageUrl = urls[i];
-    const subpageUrls = await scrapeLocalLinks(pageUrl);
-    job.result.pages[pageUrl] = { links: {} };
-    subpageUrls.forEach((url) => {
-      job.result.pages[pageUrl].links[url] = url;
-      job.result.links[url] = { redirected: null };
-    });
+    await scrapePage(pageUrl, job);
+    if (Object.keys(job.result.links).length > 2000) break;
   }
 
   const links = Object.keys(job.result.links);
   i = links.length;
   while (i--) {
     if (shouldStop(job)) break;
-    // console.log(links[i]);
     job.result.links[links[i]] = await isRedirected(links[i]);
   }
-
-  // job.status = 'idle';
-}
-
-// async function XscrapePage(url) {
-//   try {
-//     const urls = await scrapeLocalLinks(url);
-//     const links = await checkRedirects(urls);
-//     return { url, links };
-//   } catch (err) {
-//     return { error: err };
-//   }
-// }
-export async function runTest(testUrl) {
-  // const testUrl = 'https://slapshotsairconditioning.com/'; // 'https://alwaysplumbing.kinsta.cloud';
-
-  const myJob = createJob({ testUrl, test: Date.now() });
-  return scrapeSite(testUrl, myJob).then(() => {
-    console.log('done');
-    // console.log(JSON.stringify(myJob, null, 2));
-    return myJob;
-  });
-}
-
-// setInterval(() => {
-//   console.log(myJob);
-// }, 2000);
-
-async function collectSiteCities(baseUrl) {
-  console.log('collectSiteCities', { baseUrl });
-  const u = new URL(baseUrl);
-  console.log(u.host, u.hostname);
-
-  return axios
-    .get(baseUrl)
-    .then(async (response) => {
-      const html = response.data;
-      const $ = cheerio.load(html);
-      return $('.maplinkswrapper a[href]')
-        .map((index, element) => {
-          let url = $(element).attr('href');
-          // console.log('isAbsolute', path.isAbsolute(url), url);
-          if (path.isAbsolute(url)) {
-            const u = new URL(baseUrl);
-            u.pathname = path.join(u.pathname, url);
-            url = u.href;
-          }
-          return url;
-        })
-        .get();
-    })
-    .catch((error) => {
-      console.error('Error fetching the URL:', error);
-    });
-}
-
-async function checkCityPage(baseUrl, job) {
-  // console.log('Check City Page', baseUrl);
-  const result = { url: baseUrl, redirects: [] };
-  return await axios
-    .get(baseUrl)
-    .then(async (response) => {
-      const html = response.data;
-      const $ = cheerio.load(html);
-      const urls = $('a[href]:not([href^="tel"]):not([href$=".vcf"])')
-        .map((index, element) => {
-          let url = $(element).attr('href');
-          if (path.isAbsolute(url)) {
-            const u = new URL(baseUrl);
-            if (url.indexOf('/') === 0) {
-              u.pathname = url;
-            } else {
-              u.pathname = path.join(u.pathname, url);
-            }
-            url = u.href;
-          }
-          return url;
-        })
-        .get();
-
-      let i = urls.length;
-      while (i--) {
-        result.redirects.push(await isRedirected(urls[i]));
-        if (shouldStop(job)) break;
-      }
-      return result;
-    })
-    .catch((error) => {
-      result.error = 'Error fetching the URL:' + error;
-      return result;
-    });
 }
 
 export async function isRedirected(url, retry = true) {
@@ -416,7 +205,7 @@ export function stopJob(jobId) {
 
 function startJob(jobId) {
   const job = getJob(jobId);
-  if (job.status === 'idle') {
+  if (job.status !== 'running') {
     job.started = new Date().toISOString();
     job.stop = false;
     job.status = 'running';
@@ -449,6 +238,22 @@ export function resetJob(jobId) {
   return job;
 }
 
+export async function refreshJob(jobId) {
+  const job = getJob(jobId);
+  if (startJob(jobId)) {
+    job.status = 'running';
+    const urls = Object.keys(job.result.links).filter((url) => job.result.links[url].redirected === true);
+    urls.forEach((url) => (job.result.links[url] = { redirected: null }));
+    let i = urls.length;
+    while (i--) {
+      if (shouldStop(job)) break;
+      const url = urls[i];
+      job.result.links[url] = await isRedirected(url);
+    }
+    endJob(jobId);
+  }
+}
+
 function shouldStop(job) {
   if (job.stop === true) {
     job.status = 'idle';
@@ -464,58 +269,9 @@ export async function runJob(jobId) {
   const siteUrl = job.args.url;
 
   if (isValidURL(siteUrl)) {
-    console.log({ siteUrl });
     await scrapeSite(siteUrl, job);
   } else {
     console.log('runJob failed', job.args);
   }
-
-  // job.result.test = {};
-  // const cities = await collectSiteCities(siteUrl);
-  // cities.push(siteUrl);
-  // // cities.splice(2); // FOR TESTING
-  // cities.sort().reverse();
-  // job.result.test = cities.reduce((o, c) => ({ ...o, [c]: { status: 'idle', result: null } }), {});
-
-  // if (shouldStop(job)) return job;
-
-  // let i = cities.length;
-  // while (i--) {
-  //   job.result.test[cities[i]] = { status: 'running', result: null };
-  //   const cityResult = await checkCityPage(cities[i], job);
-  //   job.result.test[cities[i]].result = cityResult;
-  //   job.result.test[cities[i]].status = 'done';
-
-  //   if (shouldStop(job)) break;
-  // }
-
   endJob(jobId);
 }
-
-// export async function runJob(jobId) {
-//   console.log('runJob', jobId);
-//   if (!startJob(jobId)) return;
-//   const job = getJob(jobId);
-//   const siteUrl = job.args.siteUrl;
-
-//   job.result.test = {};
-//   const cities = await collectSiteCities(siteUrl);
-//   cities.push(siteUrl);
-//   // cities.splice(2); // FOR TESTING
-//   cities.sort().reverse();
-//   job.result.test = cities.reduce((o, c) => ({ ...o, [c]: { status: 'idle', result: null } }), {});
-
-//   if (shouldStop(job)) return job;
-
-//   let i = cities.length;
-//   while (i--) {
-//     job.result.test[cities[i]] = { status: 'running', result: null };
-//     const cityResult = await checkCityPage(cities[i], job);
-//     job.result.test[cities[i]].result = cityResult;
-//     job.result.test[cities[i]].status = 'done';
-
-//     if (shouldStop(job)) break;
-//   }
-
-//   endJob(jobId);
-// }

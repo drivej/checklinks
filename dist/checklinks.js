@@ -6,13 +6,12 @@ const $form = document.getElementById('checkform');
 const $startBtn = document.getElementById('start-btn');
 const $stopBtn = document.getElementById('stop-btn');
 const $resetBtn = document.getElementById('reset-btn');
+const $refreshBtn = document.getElementById('refresh-btn');
 const $urlInput = document.querySelector('input[name="url"]');
-// function onSubmit(e) {
-//   e.preventDefault();
-//   scanUrl(e.target.siteUrl.value);
-// }
+const $result = document.getElementById('result');
+let pollInt;
 
-$urlInput.addEventListener('input', () => {
+function onChangeInpput() {
   if ($urlInput.value !== job?.args?.url) {
     stopPoll();
     $startBtn.disabled = false;
@@ -21,7 +20,7 @@ $urlInput.addEventListener('input', () => {
   } else {
     startPolling();
   }
-});
+}
 
 function startJob(url) {
   localStorage.setItem('url', url);
@@ -42,8 +41,6 @@ function stopJob() {
     });
 }
 
-$stopBtn.addEventListener('click', stopJob);
-
 function resetJob() {
   fetch(`/job/${job.id}/reset`)
     .then((r) => r.json())
@@ -54,9 +51,15 @@ function resetJob() {
     });
 }
 
-$resetBtn.addEventListener('click', resetJob);
-
-let pollInt;
+function refreshJob() {
+  fetch(`/job/${job.id}/refresh`)
+    .then((r) => r.json())
+    .then((r) => {
+      job = r;
+      displayResult(r);
+      startPolling();
+    });
+}
 
 function startPolling() {
   stopPoll();
@@ -69,7 +72,7 @@ function doPoll() {
     .then((r) => {
       localStorage.setItem('jobData', JSON.stringify(r));
       displayResult(r);
-      if (r.status === 'idle') stopPoll();
+      if (r.status !== 'running') stopPoll();
     });
 }
 
@@ -77,68 +80,28 @@ function stopPoll() {
   if (pollInt) clearInterval(pollInt);
 }
 
-const $result = document.getElementById('result');
-
-function XdisplayResult(r) {
-  if (r?.error) {
-    $result.innerHTML = `<div class="alert alert-warning" role="alert">${r?.error}</div>`;
-    stopPoll();
-    return;
-  }
-  $startBtn.disabled = true;
-  $resetBtn.disabled = true;
-  $stopBtn.disabled = true;
-
-  switch (r.status) {
-    case 'done':
-      $resetBtn.disabled = false;
-      break;
-    case 'running':
-      $stopBtn.disabled = false;
-      break;
-    default:
-      $startBtn.disabled = false;
-  }
-
-  $urlInput.placeholder = r.args.url;
-
-  const cities = Object.keys(r.result?.test ?? {})
-    .map((url) => ({ url, ...r.result.test[url] }))
-    .sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
-
-  const htm = cities.map((city) => {
-    const cls = city.status === 'running' ? 'text-bg-warning' : city.status === 'done' ? 'text-bg-secondary' : '';
-    return `
-      <tr>
-          <td><a href="${city.url}">${city.url}</a></td>
-          <td class="${cls} status_${city.status}">${city.status} ${city.status === 'running' ? blinker : ''}</td>
-      </tr>
-      ${showErrors(city)}
-  `;
-  });
-
+function getElapsedTime(job) {
   let elapsed = '0:00';
-  if (r.started) {
-    const endDate = r.status === 'done' ? new Date(Date.parse(r?.completed ?? Date.now())) : new Date();
-    const startDate = new Date(Date.parse(r.started));
+  if (job.started) {
+    const endDate = job.status === 'done' ? new Date(Date.parse(job?.completed ?? Date.now())) : new Date();
+    const startDate = new Date(Date.parse(job.started));
     const dif = endDate.getTime() - startDate.getTime();
     const s = dif / 1000;
     const ss = ~~(s % 60);
     const mm = ~~(s / 60);
     elapsed = `${mm}:${ss.toFixed(0).padStart(2, '0')}`;
   }
-
-  const cls = r?.status === 'idle' ? 'text-bg-success' : 'text-bg-warning';
-
-  $result.innerHTML = `
-  <div class="p-1">Status: <span class="badge ${cls}">${r?.status ?? 'loading...'}</span> | Time Elapsed: ${elapsed}</div>
-  <table border="1" class="table table-sm table-bordered table-condensed">
-    <tbody>${htm.join('')}</tbody>
-  </table>`;
+  return elapsed;
 }
 
-function anchorize(str) {
-  return str.replace(/[^a-zA-Z0-9]/g, '');
+function getJobProgress(job) {
+  let progress = 0;
+  if (job?.result?.links) {
+    const q = Object.keys(job.result.links);
+    const a = q.filter((s) => job.result.links[s].status);
+    progress = ~~((100 * a.length) / q.length);
+  }
+  return progress;
 }
 
 function displayResult(data) {
@@ -150,10 +113,12 @@ function displayResult(data) {
   $startBtn.disabled = true;
   $resetBtn.disabled = true;
   $stopBtn.disabled = true;
+  $refreshBtn.disabled = true;
 
   switch (data.status) {
     case 'done':
       $resetBtn.disabled = false;
+      $refreshBtn.disabled = false;
       break;
     case 'running':
       $stopBtn.disabled = false;
@@ -164,54 +129,64 @@ function displayResult(data) {
 
   $urlInput.placeholder = data.args.url;
 
+  const htm = [];
+
+  const time = getElapsedTime(data);
+  const progress = getJobProgress(data);
+  const redirects = data?.result?.links ? Object.keys(data.result.links).filter((s) => data.result.links[s].redirected === true) : [];
+  const pages = Object.keys(data?.result?.pages ?? {}).length;
+  const links = Object.keys(data?.result?.links ?? {}).length;
+
+  htm.push(`
+  <h5 class="p-2 d-flex justify-content-between">
+    <div>
+        ${data.status === 'running' ? blinker : ''} 
+        ${data.status} ${progress}% 
+    </div>
+    <div>
+        Elapsed Time: ${time} 
+    </div>
+    </div>
+    <div>
+        ${pages} Pages | 
+        ${links} Links |
+        <span class="badge ${redirects.length > 0 ? 'text-bg-warning' : 'text-bg-success'}">${redirects.length} Redirects</span>
+    </div>
+  </h5>`);
+
   if (data?.result?.pages) {
-    const htm = [];
-
-    // Object.keys(data.result.pages)
-    //   .sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0))
-    //   .forEach((u) => {
-    //     htm.push(`<div><a href="#${anchorize(u)}">${u}</a></div>`);
-    //   });
-
-    //     const cls = r?.status === 'idle' ? 'text-bg-success' : 'text-bg-warning';
-
-    //   $result.innerHTML = `
-    //   <div class="p-1">Status: <span class="badge ${cls}">${r?.status ?? 'loading...'}</span> | Time Elapsed: ${elapsed}</div>
-    //   <table border="1" class="table table-sm table-bordered table-condensed">
-    //     <tbody>${htm.join('')}</tbody>
-    //   </table>`;
-
-    const q = Object.keys(data.result.links);
-    const a = q.filter((s) => data.result.links[s].status);
-    const p = (100 * a.length) / q.length;
-
-    htm.push(`<div>${data.status} ${~~p}%</div>`);
-
-    htm.push('<ul>');
+    htm.push('<div class="d-flex flex-column gap-2">');
     Object.keys(data.result.pages)
       .sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0))
       .forEach((u) => {
-        htm.push(`<li>`);
         const links = Object.keys(data.result.pages[u].links);
         const done = links.filter((s) => data.result.links[s].status);
+        const redirected = links.filter((s) => data.result.links[s].redirected);
 
-        htm.push(`<a id="${anchorize(u)}">${u}</a> ${links.length}/${done.length}`);
+        htm.push(`<div class="border p-2 rounded d-flex flex-column gap-2 ${redirected.length > 0 ? 'text-bg-warning' : 'bg-light'}">`);
+        htm.push(`<div class="d-flex justify-content-between w-100"><a href="${u}">${u}</a> <div>${done.length}/${links.length}</div></div>`);
 
-        htm.push(`<ul>`);
-        Object.keys(data.result.pages[u].links).forEach((s) => {
-          if (data.result.links[s]?.redirected === true) {
-            htm.push(`<li><a href="${s}">${s}</a> => <a href="${data.result.links[s].to}">${data.result.links[s].to}</a></li>`);
-          }
-        });
-        htm.push(`</ul>`);
-        htm.push(`</li>`);
+        if (redirected.length) {
+          htm.push(`<div class="d-flex justify-content-end"><table class="table table-bordered"><tbody>`);
+          Object.keys(data.result.pages[u].links).forEach((s) => {
+            if (data.result.links[s]?.redirected === true) {
+              htm.push(`
+              <tr>
+                <td class="text-nowrap" style="width:50%"><a href="${s}">${s}</a></td>
+                <td>=></td>
+                <td class="text-nowrap" style="width:50%"><a href="${data.result.links[s].to}">${data.result.links[s].to}</a></td>
+              </tr>`);
+            }
+          });
+          htm.push(`</tbody></table></div>`);
+        }
+
+        htm.push(`</div>`);
       });
-    htm.push('</ul>');
-
-    $result.innerHTML = htm.join('');
-  } else {
-    $result.innerHTML = '';
+    htm.push('</div>');
   }
+
+  $result.innerHTML = htm.join('');
 }
 
 function showErrors(city) {
@@ -242,23 +217,18 @@ function showErrors(city) {
 }
 
 function init() {
+  $stopBtn.addEventListener('click', stopJob);
+  $resetBtn.addEventListener('click', resetJob);
+  $urlInput.addEventListener('input', onChangeInpput);
+  $refreshBtn.addEventListener('click', refreshJob);
+
   const params = new URLSearchParams(window.location.search);
   let url = '';
   if (params.has('url')) {
     url = params.get('url');
     $urlInput.value = params.get('url');
-    //   } else {
-    //     url = localStorage.getItem('siteUrl');
-    // document.querySelector('input[name="siteUrl"]').value = url;
-    // const jobData = localStorage.getItem('jobData');
-    // if (jobData) {
-    //   job = JSON.parse(jobData);
-    //   startPolling();
-    //   displayResult(job);
-    // }
   }
   startJob(url);
-  // $form.addEventListener('submit', onSubmit);
 }
 
 init();
